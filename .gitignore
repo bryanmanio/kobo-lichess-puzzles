@@ -1,0 +1,6 @@
+# macOS
+.DS_Store
+._*
+
+# Scratch output from spec/fetch_fixtures.sh
+spec/fixtures/*.json
