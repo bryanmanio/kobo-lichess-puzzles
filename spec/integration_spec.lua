@@ -307,14 +307,17 @@ do
     plugin:start()
     local view = shownView()
     view:onHint()
-    check(view.session.win == false, "a hint should lose the puzzle")
+    check(view.session.win == true, "a hint should not lose the puzzle")
+    check(view:isRatedAttempt() == false, "a hint should make the attempt casual")
     check(view.board.marks[Chess.algebraicToSquare(string.sub(pz.solution[1], 1, 2))] == "hint",
         "the hint should mark the source square")
 
     view:onShowSolution()
     check(view.session:isFinished(), "showing the solution should finish the puzzle")
-    check(tostring(view.status_text.text):find("-7", 1, true) ~= nil,
-        "a rating loss should be shown, got: " .. tostring(view.status_text.text))
+    -- The hint already made this attempt casual, so no rating moves.
+    check(tostring(view.status_text.text):find("casual", 1, true) ~= nil,
+        "a hinted attempt should report as casual, got: "
+        .. tostring(view.status_text.text))
 
     -- Next advances to the second puzzle.
     view:onNextPuzzle()
@@ -949,8 +952,10 @@ do
 
     view:onHint()
     local text = tostring(view.status_text.text)
-    check(text:find("FAILED (hint)", 1, true) ~= nil,
-        "a hint should say it was the hint, got: " .. text)
+    check(text:find("casual", 1, true) ~= nil,
+        "a hint should switch the line to casual, got: " .. text)
+    check(text:find("FAILED", 1, true) == nil,
+        "a hint must not report the puzzle as failed, got: " .. text)
 
     -- A mistake reads differently from a hint.
     plugin = newPlugin()
@@ -986,9 +991,8 @@ do
     view = shownView()
     view:onHint()
     text = tostring(view.status_text.text)
-    check(text:find("FAILED (hint)", 1, true) ~= nil, "still says why it failed")
     check(text:find("no token", 1, true) ~= nil,
-        "a lost puzzle must still report a missing token, got: " .. text)
+        "a missing token outranks casual, since nothing is recorded at all: " .. text)
 end
 
 -- 23. The opponent's move is highlighted when a puzzle opens, and a correct
@@ -1110,17 +1114,19 @@ do
     end
 
     check(view.session:isFinished(), "the puzzle should be finished")
-    check(view:outcomeLabel():find("SOLVED", 1, true) ~= nil,
+    check(view:outcomeLabel() == "SOLVED",
         "finishing the line yourself should read as solved, got: " .. view:outcomeLabel())
-    check(view:outcomeLabel():find("hint", 1, true) ~= nil,
-        "it should say the hint is why it earned nothing, got: " .. view:outcomeLabel())
     check(tostring(view.status_text.text):find("SOLVED", 1, true) ~= nil,
         "the banner should say solved, got: " .. tostring(view.status_text.text))
+    check(tostring(view.status_text.text):find("casual", 1, true) ~= nil,
+        "and that it earned nothing, got: " .. tostring(view.status_text.text))
 
-    -- ...but it must still be reported as a loss, so no rating is gained.
+    -- Reported as a casual win: it happened, but the rating must not move.
     local body = net.encoded[#net.encoded]
-    check(body and body.solutions[1].win == false,
-        "a hinted solve must still be reported as a loss")
+    check(body and body.solutions[1].win == true,
+        "a hinted solve is still a solve")
+    check(body and body.solutions[1].rated == false,
+        "a hinted solve must be reported as casual so no rating is gained")
 
     -- Being shown the answer is not a solve.
     plugin = newPlugin()
@@ -1172,6 +1178,79 @@ do
     end
     check(#net.calls == calls_after_report,
         "a retry must not be submitted again, calls went to " .. #net.calls)
+end
+
+-- 27. A hint makes only the current puzzle casual. The next one is rated
+-- again, and the user's own Rated preference is never overwritten.
+do
+    local pz, pz2 = puzzles[1], puzzles[2]
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    net.responses = {
+        { status = 200, decoded = { puzzles = { apiEntry(pz), apiEntry(pz2) } } },
+        { status = 200, decoded = { rounds = { { id = pz.id, win = true, ratingDiff = 0 } },
+                                    puzzles = {}, glicko = { rating = 1950 } } },
+    }
+    plugin:start()
+    local view = shownView()
+
+    check(plugin:isRated() == true, "the global preference starts rated")
+    view:onHint()
+    check(view:isRatedAttempt() == false, "the hinted puzzle is casual")
+    check(plugin:isRated() == true,
+        "a hint must not overwrite the user's own Rated setting")
+
+    for i = 1, #pz.solution, 2 do
+        if view.session:isFinished() then break end
+        tapMove(view, pz.solution[i])
+    end
+
+    -- Moving on restores a rated attempt.
+    view:onNextPuzzle()
+    local next_view = shownView()
+    check(next_view ~= view, "Next should open a new puzzle")
+    check(next_view.session.hinted == false, "the new puzzle is not hinted")
+    check(next_view:isRatedAttempt() == true, "and is rated again")
+    check(tostring(next_view.status_text.text):find("casual", 1, true) == nil,
+        "the new puzzle should not say casual, got: "
+        .. tostring(next_view.status_text.text))
+
+    -- Switching Rated off still works, and still reads as casual.
+    plugin.settings:saveSetting("rated", false)
+    next_view.rated = plugin:isRated()
+    next_view:updateStatus()
+    check(next_view:isRatedAttempt() == false, "the preference still applies")
+    check(tostring(next_view.status_text.text):find("casual", 1, true) ~= nil,
+        "turning Rated off should read as casual")
+end
+
+-- 28. Retrying a hinted puzzle must not win back the rating chance it spent.
+do
+    local pz = puzzles[1]
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    net.responses = { { status = 200, decoded = { puzzles = { apiEntry(pz) } } } }
+    plugin:start()
+    local view = shownView()
+
+    view:onHint()
+    check(view.button_table:getButtonById("redo").enabled == true,
+        "Redo should be offered once a hint has been taken")
+
+    view:onRedo()
+    check(view.session.hinted == true,
+        "an unreported hint must carry into the retry")
+    check(view:isRatedAttempt() == false,
+        "so the retry is still casual")
+
+    -- Solving the retry perfectly is still reported casually.
+    for i = 1, #pz.solution, 2 do
+        if view.session:isFinished() then break end
+        tapMove(view, pz.solution[i])
+    end
+    local report = view.session:solutionReport(plugin:isRated())
+    check(report.win == true and report.rated == false,
+        "a retried hinted puzzle is a casual solve, not a rated one")
 end
 
 writeToken(nil)

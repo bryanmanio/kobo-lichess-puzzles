@@ -36,6 +36,7 @@ function Session.new(puzzle)
     self.win = true             -- until a mistake or a hint
     self.loss_reason = nil      -- why it was lost: "hint", "wrong move", ...
     self.revealed = false       -- true once the solution was played for them
+    self.hinted = false         -- a hint makes the attempt casual, not lost
     self.state = "playing"      -- playing | solved | failed
     self.hint_level = 0
     -- The puzzle position is the end of the PGN, so the final ply is the
@@ -187,7 +188,10 @@ end
 function Session:hint()
     if self.state ~= "playing" then return self.hint_level end
     self:revertWrong()
-    self:markLost("hint")
+    -- A hint no longer fails the puzzle. It makes the attempt casual: it can
+    -- no longer earn rating, but it does not cost any either, so a nudge is
+    -- worth taking rather than being as expensive as giving up.
+    self.hinted = true
     self.hint_level = math.min(self.hint_level + 1, 2)
     local from, to = self:expectedSquares()
     if self.hint_level == 1 then return 1, from, nil end
@@ -227,10 +231,23 @@ function Session:isFinished()
     return self.state ~= "playing"
 end
 
+--- True when this attempt can still affect the rating.
+-- A hint makes the attempt casual regardless of the global setting.
+-- @bool rated the user's rated preference
+function Session:isRatedAttempt(rated)
+    return (rated and not self.hinted) and true or false
+end
+
 --- The result to report to lichess.
+-- A hinted puzzle is still reported, so it is not served again, but as a
+-- casual round so the rating does not move.
 -- @treturn table { id = ..., win = ..., rated = ... }
 function Session:solutionReport(rated)
-    return { id = self.puzzle.id, win = self.win, rated = rated and true or false }
+    return {
+        id = self.puzzle.id,
+        win = self.win,
+        rated = self:isRatedAttempt(rated),
+    }
 end
 
 return Session

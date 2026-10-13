@@ -12,7 +12,8 @@ the screen, so other models work with no per-device code.
 - Puzzles you have never seen before, fetched in batches.
 - Tap a piece, tap a square. The opponent's move is highlighted when the puzzle
   opens, correct moves get a tick, wrong ones a cross.
-- Hints, a solution replay, and Redo.
+- Hints that make the puzzle casual rather than failing it, a solution replay,
+  and Redo.
 - Any mating move is accepted, not just the listed one, as on the website.
 - Results survive a dropped connection: they are queued and sent on the next run.
 - Optional home screen tile that opens straight into the board.
@@ -129,16 +130,21 @@ watch also appears in the NickelMenu menu. Regenerate the artwork with
 | Shown | Meaning |
 | --- | --- |
 | `White to play · puzzle 1961` | Whose move, and the puzzle's difficulty rating |
-| `FAILED (hint)` | Lost, and why. A hint, a wrong move or the solution all cost it |
-| `SOLVED` | Solved unaided, rating gained |
-| `SOLVED (hint)` | You finished the line yourself, but it earned no rating |
+| `casual` | This attempt cannot change your rating |
+| `FAILED (wrong move)` | Lost, and why |
+| `SOLVED` | You finished the line yourself |
+| `SOLVED (mistake)` | Solved, but a wrong move means it earned nothing |
 | `FAILED` *(at the end)* | You were shown the answer |
-| `no token` | Not signed in, so nothing is being recorded |
-| `casual` | Signed in, but **Rated** is switched off |
+| `no token` | Not signed in, so nothing is being recorded at all |
 
-Hints and viewing the solution lose the puzzle, which is reported honestly to
-lichess as a loss — the same as on the website. **Rated** in the menu turns
-rating updates off entirely if you want to practise without affecting it.
+**Taking a hint makes that puzzle casual.** It is reported to lichess so it is
+not served to you again, but as a casual round, so your rating does not move in
+either direction — a nudge costs you the chance to gain, not a loss. The next
+puzzle is rated again automatically; your own **Rated** setting is untouched.
+
+A wrong move or viewing the solution still loses the puzzle, and is reported as
+a loss, the same as on the website. **Rated** in the menu turns rating updates
+off entirely if you want to practise without affecting anything.
 
 ---
 

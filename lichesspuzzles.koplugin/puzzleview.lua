@@ -229,6 +229,13 @@ function PuzzleView:failedLabel()
     return T(_("FAILED (%1)"), reason)
 end
 
+--- True when this attempt can still affect the rating. A hint switches the
+--- current puzzle to casual; the next one starts rated again, because each
+--- puzzle gets a fresh view that reads the global setting.
+function PuzzleView:isRatedAttempt()
+    return self.session:isRatedAttempt(self.rated)
+end
+
 --- How the puzzle ended, which is a different question from whether it earned
 --- any rating. Playing the line out yourself is a solve even when a hint means
 --- it does not count; being shown the answer is not a solve at all. Reporting
@@ -275,7 +282,7 @@ function PuzzleView:statusLine()
             -- Distinct from "casual": one is a choice, the other is a problem
             -- the user can fix, and showing "casual" for both is misleading.
             parts[#parts + 1] = _("no token")
-        elseif not self.rated then
+        elseif not self:isRatedAttempt() then
             parts[#parts + 1] = _("casual")
         end
     end
@@ -372,7 +379,8 @@ end
 function PuzzleView:updateRedoAvailability()
     local redo = self.button_table:getButtonById("redo")
     if not redo then return end
-    local available = self.mode == "review" or not self.session.win
+    local available = self.mode == "review"
+        or not self.session.win or self.session.hinted
     if available == redo.enabled then return end
     if available then redo:enable() else redo:disable() end
     redo:refresh()
@@ -528,7 +536,8 @@ function PuzzleView:onHint()
         touched[#touched + 1] = to
     end
     self:refreshSquares(touched, "ui")
-    if not was_lost then self:updateStatus() end
+    -- Always refresh: the first hint flips the line to casual.
+    self:updateStatus()
     self:updateRedoAvailability()
     return true
 end
@@ -649,11 +658,15 @@ function PuzzleView:onRedo()
     -- result has been sent, a retry is pure practice and starts clean.
     local carry_loss = (not self.session.win) and (not self.submitted)
     local carried_reason = self.session.loss_reason
+    -- A hint already spent this puzzle's rating chance; retrying must not win
+    -- it back, so the casual flag carries until the result has been reported.
+    local carry_hint = self.session.hinted and not self.submitted
     self.session = session
     if carry_loss then
         session.win = false
         session.loss_reason = carried_reason
     end
+    session.hinted = carry_hint
     self.review = nil
     self.board:setPosition(session.position)
     self.board:setSelection(nil, nil)

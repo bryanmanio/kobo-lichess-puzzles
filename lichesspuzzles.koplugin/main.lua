@@ -413,7 +413,11 @@ function Lichess:onPuzzleFinished(session, view)
 
         local diff = API.ratingDiffFor(result.rounds, session.puzzle.id)
         local rating = result.glicko and result.glicko.rating
-        if diff and rating then
+        if not view:isRatedAttempt() then
+            -- A casual round records the puzzle without moving the rating, so
+            -- a delta would be meaningless or zero.
+            view:showResult(T(_("%1  ·  %2"), view:outcomeLabel(), _("casual")))
+        elseif diff and rating then
             view:showResult(T(_("%1  ·  %2 (%3)"),
                 view:outcomeLabel(),
                 string.format("%d", rating),

@@ -168,16 +168,18 @@ do
     local s = Session.new(pz)
     check(s.loss_reason == nil, "a fresh puzzle has no loss reason")
 
+    -- A hint makes the attempt casual rather than losing it, so there is
+    -- nothing to blame and the puzzle carries on.
     s:hint()
-    check(s.win == false, "a hint loses the puzzle")
-    check(s.loss_reason == "hint", "the reason should be the hint, got "
-        .. tostring(s.loss_reason))
+    check(s.win == true, "a hint should not lose the puzzle")
+    check(s.hinted == true, "a hint should mark the attempt casual")
+    check(s.loss_reason == nil, "a hint is not a loss, so there is no reason")
 
-    -- The first reason is what cost the puzzle; later ones must not overwrite it.
+    -- A mistake after a hint is still a loss, and names itself.
     s:tryMove(wrongMoveFor(s))
-    check(s.loss_reason == "hint",
-        "a later mistake must not rewrite the original reason, got "
-        .. tostring(s.loss_reason))
+    check(s.win == false, "a mistake still loses the puzzle")
+    check(s.loss_reason == "wrong move",
+        "the mistake should be the recorded reason, got " .. tostring(s.loss_reason))
 
     s = Session.new(pz)
     s:tryMove(wrongMoveFor(s))
@@ -240,8 +242,15 @@ do
         s:tryMove(pz.solution[i])
     end
     check(s.revealed == false, "a hint is not the same as being shown the answer")
-    check(s.win == false, "a hint still costs the credit")
+    check(s.win == true, "a hint does not lose a puzzle you went on to solve")
+    check(s.hinted == true, "but the attempt is casual")
     check(s.state == "solved", "the user still finished the line themselves")
+
+    -- Reported so it is not served again, but casual so the rating cannot move.
+    local report = s:solutionReport(true)
+    check(report.win == true, "a hinted solve is still a solve")
+    check(report.rated == false, "a hinted attempt must be reported as casual")
+    check(s:isRatedAttempt(true) == false, "a hint rules out rating either way")
 
     s = Session.new(pz)
     while not s:isFinished() do s:revealNext() end
@@ -285,7 +294,8 @@ do
     local level, from, to = s:hint()
     check(level == 1 and from == want_from and to == nil,
         "first hint should reveal only the source square")
-    check(s.win == false, "taking a hint should lose the puzzle")
+    check(s.win == true, "taking a hint should not lose the puzzle")
+    check(s:isRatedAttempt(true) == false, "but it should make the attempt casual")
     local level2, from2, to2 = s:hint()
     check(level2 == 2 and from2 == want_from and to2 == want_to,
         "second hint should reveal the destination")
