@@ -109,6 +109,31 @@ Nickel open the image as a one-page book before handing over — which leaves a
 "1% read" entry in **My Books** every single time. Spawning the launcher from
 the menu avoids the library altogether.
 
+### Nothing here modifies your existing setup
+
+Every step above only **adds** files. Nothing in this project edits, moves or
+deletes any part of KOReader, KFMon, NickelMenu or your library, and the plugin
+only ever writes to its own two files in `.adds/koreader/settings/`. Your
+existing launchers keep working exactly as they did, and you can go on starting
+KOReader however you already do.
+
+### Uninstalling
+
+Delete what you copied in; there is nothing else to undo:
+
+```sh
+KO=/Volumes/KOBOeReader
+rm -rf "$KO/.adds/koreader/plugins/lichesspuzzles.koplugin"
+rm -f  "$KO/.adds/koreader/settings/lichesspuzzles.lua"
+rm -f  "$KO/.adds/koreader/settings/lichess_token.txt"
+# only if you installed the optional launcher in step 5
+rm -rf "$KO/.adds/lichess-puzzles"
+rm -f  "$KO/.adds/nm/lichess-puzzles"
+```
+
+Revoke the token at <https://lichess.org/account/oauth/token> if you no longer
+want it.
+
 ---
 
 ## Using it
