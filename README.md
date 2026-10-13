@@ -16,7 +16,7 @@ the screen, so other models work with no per-device code.
   and Redo.
 - Any mating move is accepted, not just the listed one, as on the website.
 - Results survive a dropped connection: they are queued and sent on the next run.
-- Optional home screen tile that opens straight into the board.
+- Optional NickelMenu entry that opens straight into the board.
 
 ---
 
@@ -90,23 +90,24 @@ Then fully quit and relaunch KOReader — plugins load only at startup.
 
 Open it from **Tools → More tools → Lichess puzzles**.
 
-### 5. Optional: a home screen tile
+### 5. Optional: a NickelMenu entry
 
-The `kobo/` folder adds a cover tile that opens straight into the board and
-returns to the home screen when you leave.
+The `kobo/` folder adds a **Lichess Puzzles** item to the NickelMenu menu that
+opens straight into the board and returns to the home screen when you leave.
 
 ```sh
 KO=/Volumes/KOBOeReader
 mkdir -p "$KO/.adds/lichess-puzzles"
-cp kobo/launch.sh            "$KO/.adds/lichess-puzzles/"
-cp kobo/lichess-puzzles.ini  "$KO/.adds/kfmon/config/"
-cp kobo/lichess-puzzles.png  "$KO/"
+cp kobo/launch.sh           "$KO/.adds/lichess-puzzles/"
+cp kobo/nm-lichess-puzzles  "$KO/.adds/nm/lichess-puzzles"
 chmod +x "$KO/.adds/lichess-puzzles/launch.sh"
 ```
 
-Because `.adds/nm/kfmon` carries a `generator : main : kfmon` line, the same
-watch also appears in the NickelMenu menu. Regenerate the artwork with
-`python3 -I kobo/make-icon.py kobo/lichess-puzzles.png`.
+This deliberately uses NickelMenu rather than a KFMon tile on the home screen.
+A tile has to exist in the library for KFMon to accept it, and tapping it makes
+Nickel open the image as a one-page book before handing over — which leaves a
+"1% read" entry in **My Books** every single time. Spawning the launcher from
+the menu avoids the library altogether.
 
 ---
 
@@ -209,7 +210,7 @@ brew install luajit
 | `boardwidget.lua` | Draws the board, turns taps into squares |
 | `puzzleview.lua` | Solving screen and e-ink refresh strategy |
 | `main.lua` | Menu, settings, token, queue, submission |
-| `kobo/` | Home screen tile and launcher |
+| `kobo/` | NickelMenu entry and launcher |
 
 ### Notes for anyone extending this
 

@@ -1,0 +1,10 @@
+# Launch the lichess puzzle board straight from the NickelMenu menu.
+#
+# There is deliberately no KFMon watch and no home screen tile: tapping a tile
+# makes Nickel open the PNG as a book first, which leaves a "1% read" entry in
+# My Books every time. Spawning the launcher directly avoids the library
+# entirely.
+#
+# Installs to .adds/nm/lichess-puzzles on the device.
+
+menu_item :main :Lichess Puzzles :cmd_spawn :quiet:exec /mnt/onboard/.adds/lichess-puzzles/launch.sh
