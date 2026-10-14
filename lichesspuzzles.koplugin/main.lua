@@ -416,7 +416,7 @@ function Lichess:onPuzzleFinished(session, view)
         if not view:isRatedAttempt() then
             -- A casual round records the puzzle without moving the rating, so
             -- a delta would be meaningless or zero.
-            view:showResult(T(_("%1  ·  %2"), view:outcomeLabel(), _("casual")))
+            view:showResult(T(_("%1  ·  %2"), view:outcomeLabel(), _("Casual")))
         elseif diff and rating then
             view:showResult(T(_("%1  ·  %2 (%3)"),
                 view:outcomeLabel(),

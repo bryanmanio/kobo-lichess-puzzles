@@ -225,8 +225,8 @@ end
 --- exactly like a rejected move, which is genuinely confusing.
 function PuzzleView:failedLabel()
     local reason = self.session.loss_reason
-    if not reason then return _("FAILED") end
-    return T(_("FAILED (%1)"), reason)
+    if not reason then return _("Failed") end
+    return T(_("Failed (%1)"), reason)
 end
 
 --- True when this attempt can still affect the rating. A hint switches the
@@ -242,12 +242,12 @@ end
 --- a hinted-then-solved puzzle as "FAILED" hid the fact that it was solved.
 function PuzzleView:outcomeLabel()
     local session = self.session
-    if session.revealed then return _("FAILED") end
-    if session.win then return _("SOLVED") end
+    if session.revealed then return _("Failed") end
+    if session.win then return _("Solved") end
     local SHORT = { hint = _("hint"), ["wrong move"] = _("mistake") }
     local why = SHORT[session.loss_reason or ""]
-    if why then return T(_("SOLVED (%1)"), why) end
-    return _("SOLVED (no credit)")
+    if why then return T(_("Solved (%1)"), why) end
+    return _("Solved (no credit)")
 end
 
 --- The one line above the board. Kept short so it never needs truncating:
@@ -271,7 +271,7 @@ function PuzzleView:statusLine()
         parts[#parts + 1] = (session.player_color == "white")
             and _("White to play") or _("Black to play")
         if self.puzzle.rating then
-            parts[#parts + 1] = T(_("puzzle %1"), string.format("%d", self.puzzle.rating))
+            parts[#parts + 1] = T(_("Puzzle %1"), string.format("%d", self.puzzle.rating))
         end
     end
 
@@ -281,9 +281,9 @@ function PuzzleView:statusLine()
         if not self.signed_in then
             -- Distinct from "casual": one is a choice, the other is a problem
             -- the user can fix, and showing "casual" for both is misleading.
-            parts[#parts + 1] = _("no token")
+            parts[#parts + 1] = _("No token")
         elseif not self:isRatedAttempt() then
-            parts[#parts + 1] = _("casual")
+            parts[#parts + 1] = _("Casual")
         end
     end
 

@@ -193,7 +193,7 @@ do
     local view = shownView()
     check(view ~= nil, "anonymous users should still get a puzzle")
     check(view.signed_in == false, "an anonymous session is not signed in")
-    check(tostring(view.status_text.text):find("no token", 1, true) ~= nil,
+    check(tostring(view.status_text.text):find("No token", 1, true) ~= nil,
         "the status should say no token, not casual, got: "
         .. tostring(view.status_text.text))
     for i = 1, #pz.solution, 2 do tapMove(view, pz.solution[i]) end
@@ -315,7 +315,7 @@ do
     view:onShowSolution()
     check(view.session:isFinished(), "showing the solution should finish the puzzle")
     -- The hint already made this attempt casual, so no rating moves.
-    check(tostring(view.status_text.text):find("casual", 1, true) ~= nil,
+    check(tostring(view.status_text.text):find("Casual", 1, true) ~= nil,
         "a hinted attempt should report as casual, got: "
         .. tostring(view.status_text.text))
 
@@ -336,7 +336,7 @@ do
     local view = shownView()
 
     local status_before = view.status_text.text
-    check(tostring(status_before):find("FAILED", 1, true) == nil,
+    check(tostring(status_before):find("Failed", 1, true) == nil,
         "a fresh puzzle should not be marked failed")
 
     local wrong
@@ -353,7 +353,7 @@ do
     stub.defer_scheduled = true   -- hold the automatic take-back
     tapMove(view, wrong)
 
-    check(tostring(view.status_text.text):find("FAILED", 1, true) ~= nil,
+    check(tostring(view.status_text.text):find("Failed", 1, true) ~= nil,
         "the status line should say FAILED as soon as the mistake is made, got: "
         .. tostring(view.status_text.text))
     check(view.feedback_text == nil,
@@ -364,7 +364,7 @@ do
     -- The mark clears on the next interaction rather than on a timer.
     view:onSquareTap(Chess.algebraicToSquare(string.sub(pz.solution[1], 1, 2)))
     check(view.board.marks[wrong_to] == nil, "the mark should clear on the next tap")
-    check(tostring(view.status_text.text):find("FAILED", 1, true) ~= nil,
+    check(tostring(view.status_text.text):find("Failed", 1, true) ~= nil,
         "the puzzle stays marked failed")
     stub.defer_scheduled = false
 end
@@ -486,7 +486,7 @@ do
     view.rated = false
     view:updateStatus()
     local playing = tostring(view.status_text.text)
-    check(playing:find("FAILED", 1, true) ~= nil, "a lost puzzle should say FAILED")
+    check(playing:find("Failed", 1, true) ~= nil, "a lost puzzle should say Failed")
     view.rated = true
     check(displayLength(playing) <= STATUS_BUDGET,
         "playing status too long (" .. displayLength(playing) .. "): " .. playing)
@@ -624,7 +624,7 @@ do
     check(view.session.position:toFEN() ~= before_fen,
         "the rejected move should be visible on the board")
     check(view.board.marks[wrong_to] == "error", "its destination should be marked")
-    check(tostring(view.status_text.text):find("FAILED", 1, true) ~= nil,
+    check(tostring(view.status_text.text):find("Failed", 1, true) ~= nil,
         "FAILED should appear immediately, got: " .. tostring(view.status_text.text))
 
     -- The square the piece came from must be repainted too, or the piece would
@@ -678,7 +678,7 @@ do
     for i = 1, #pz.solution, 2 do tapMove(view, pz.solution[i]) end
     check(view.status_container.inverted == true,
         "finishing should invert the status strip")
-    check(tostring(view.status_text.text):find("SOLVED", 1, true) ~= nil,
+    check(tostring(view.status_text.text):find("Solved", 1, true) ~= nil,
         "a win should say SOLVED, got: " .. tostring(view.status_text.text))
 
     view:onRedo()
@@ -838,7 +838,7 @@ do
     check(view.session.win == false,
         "an unreported failure must carry into the retry")
     check(redo.enabled == true, "Redo should remain available on a failed puzzle")
-    check(tostring(view.status_text.text):find("FAILED", 1, true) ~= nil,
+    check(tostring(view.status_text.text):find("Failed", 1, true) ~= nil,
         "the retry should still show FAILED, got: " .. tostring(view.status_text.text))
 
     -- Solving the retry must report a LOSS, never a win.
@@ -906,9 +906,9 @@ do
     local view = shownView()
     check(view.signed_in == true, "a token should count as signed in")
     local text = tostring(view.status_text.text)
-    check(text:find("casual", 1, true) ~= nil,
+    check(text:find("Casual", 1, true) ~= nil,
         "rated-off should read casual, got: " .. text)
-    check(text:find("no token", 1, true) == nil,
+    check(text:find("No token", 1, true) == nil,
         "a signed-in session must not claim the token is missing")
 
     -- No token at all: a problem, not a preference.
@@ -918,9 +918,9 @@ do
     plugin:start()
     view = shownView()
     text = tostring(view.status_text.text)
-    check(text:find("no token", 1, true) ~= nil,
+    check(text:find("No token", 1, true) ~= nil,
         "a missing token should say so, got: " .. text)
-    check(text:find("casual", 1, true) == nil,
+    check(text:find("Casual", 1, true) == nil,
         "a missing token must not be reported as a casual preference")
 end
 
@@ -952,9 +952,9 @@ do
 
     view:onHint()
     local text = tostring(view.status_text.text)
-    check(text:find("casual", 1, true) ~= nil,
+    check(text:find("Casual", 1, true) ~= nil,
         "a hint should switch the line to casual, got: " .. text)
-    check(text:find("FAILED", 1, true) == nil,
+    check(text:find("Failed", 1, true) == nil,
         "a hint must not report the puzzle as failed, got: " .. text)
 
     -- A mistake reads differently from a hint.
@@ -974,7 +974,7 @@ do
     end
     tapMove(view, wrong)
     text = tostring(view.status_text.text)
-    check(text:find("FAILED (wrong move)", 1, true) ~= nil,
+    check(text:find("Failed (wrong move)", 1, true) ~= nil,
         "a mistake should say so, got: " .. text)
 
     -- Redo keeps the reason, since the loss is carried over too.
@@ -991,7 +991,7 @@ do
     view = shownView()
     view:onHint()
     text = tostring(view.status_text.text)
-    check(text:find("no token", 1, true) ~= nil,
+    check(text:find("No token", 1, true) ~= nil,
         "a missing token outranks casual, since nothing is recorded at all: " .. text)
 end
 
@@ -1114,11 +1114,11 @@ do
     end
 
     check(view.session:isFinished(), "the puzzle should be finished")
-    check(view:outcomeLabel() == "SOLVED",
+    check(view:outcomeLabel() == "Solved",
         "finishing the line yourself should read as solved, got: " .. view:outcomeLabel())
-    check(tostring(view.status_text.text):find("SOLVED", 1, true) ~= nil,
+    check(tostring(view.status_text.text):find("Solved", 1, true) ~= nil,
         "the banner should say solved, got: " .. tostring(view.status_text.text))
-    check(tostring(view.status_text.text):find("casual", 1, true) ~= nil,
+    check(tostring(view.status_text.text):find("Casual", 1, true) ~= nil,
         "and that it earned nothing, got: " .. tostring(view.status_text.text))
 
     -- Reported as a casual win: it happened, but the rating must not move.
@@ -1138,7 +1138,7 @@ do
     plugin:start()
     view = shownView()
     view:onShowSolution()
-    check(view:outcomeLabel() == "FAILED",
+    check(view:outcomeLabel() == "Failed",
         "being shown the answer is not solving it, got: " .. view:outcomeLabel())
 end
 
@@ -1211,7 +1211,7 @@ do
     check(next_view ~= view, "Next should open a new puzzle")
     check(next_view.session.hinted == false, "the new puzzle is not hinted")
     check(next_view:isRatedAttempt() == true, "and is rated again")
-    check(tostring(next_view.status_text.text):find("casual", 1, true) == nil,
+    check(tostring(next_view.status_text.text):find("Casual", 1, true) == nil,
         "the new puzzle should not say casual, got: "
         .. tostring(next_view.status_text.text))
 
@@ -1220,7 +1220,7 @@ do
     next_view.rated = plugin:isRated()
     next_view:updateStatus()
     check(next_view:isRatedAttempt() == false, "the preference still applies")
-    check(tostring(next_view.status_text.text):find("casual", 1, true) ~= nil,
+    check(tostring(next_view.status_text.text):find("Casual", 1, true) ~= nil,
         "turning Rated off should read as casual")
 end
 

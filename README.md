@@ -155,13 +155,13 @@ want it.
 
 | Shown | Meaning |
 | --- | --- |
-| `White to play · puzzle 1961` | Whose move, and the puzzle's difficulty rating |
-| `casual` | This attempt cannot change your rating |
-| `FAILED (wrong move)` | Lost, and why |
-| `SOLVED` | You finished the line yourself |
-| `SOLVED (mistake)` | Solved, but a wrong move means it earned nothing |
-| `FAILED` *(at the end)* | You were shown the answer |
-| `no token` | Not signed in, so nothing is being recorded at all |
+| `White to play · Puzzle 1961` | Whose move, and the puzzle's difficulty rating |
+| `Casual` | This attempt cannot change your rating |
+| `Failed (wrong move)` | Lost, and why |
+| `Solved` | You finished the line yourself |
+| `Solved (mistake)` | Solved, but a wrong move means it earned nothing |
+| `Failed` *(at the end)* | You were shown the answer |
+| `No token` | Not signed in, so nothing is being recorded at all |
 
 **Taking a hint makes that puzzle casual.** It is reported to lichess so it is
 not served to you again, but as a casual round, so your rating does not move in
