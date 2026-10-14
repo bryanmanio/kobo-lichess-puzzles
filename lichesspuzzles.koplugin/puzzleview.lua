@@ -626,6 +626,17 @@ function PuzzleView:reviewGoTo(index)
     self.board:setLastMove(last_from, last_to)
     review.index = index
 
+    -- Tick the solver's moves, the winning one included. finish() clears the
+    -- marks on its way into review, so without this the tick earned by the
+    -- final move would vanish the moment it was awarded.
+    --
+    -- Odd indices are the solver's moves and even ones the opponent's reply,
+    -- so only odd indices are ticked. Nothing is ticked if the solution was
+    -- revealed, since those moves were shown rather than found.
+    if index > 0 and index % 2 == 1 and not self.session.revealed then
+        self.board:setMark(last_to, "correct")
+    end
+
     for i = 1, #previous do changed[#changed + 1] = previous[i] end
     if last_from then
         changed[#changed + 1] = last_from

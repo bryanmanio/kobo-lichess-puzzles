@@ -1253,6 +1253,72 @@ do
         "a retried hinted puzzle is a casual solve, not a rated one")
 end
 
+-- 29. The winning move keeps its tick. finish() clears the marks on its way
+-- into review, so the tick awarded by the final move used to vanish instantly.
+do
+    local pz = puzzles[1]
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    net.responses = {
+        { status = 200, decoded = { puzzles = { apiEntry(pz) } } },
+        { status = 200, decoded = { rounds = { { id = pz.id, win = true, ratingDiff = 7 } },
+                                    puzzles = {}, glicko = { rating = 1968 } } },
+    }
+    plugin:start()
+    local view = shownView()
+    for i = 1, #pz.solution, 2 do
+        if view.session:isFinished() then break end
+        tapMove(view, pz.solution[i])
+    end
+    check(view.session:isFinished(), "the puzzle should be solved")
+
+    local final_to = Chess.algebraicToSquare(
+        string.sub(pz.solution[#pz.solution], 3, 4))
+    check(view.board.marks[final_to] == "correct",
+        "the winning move should still be ticked once the puzzle is over")
+
+    -- Only the solver's moves are ticked. Odd indices are the solver's, even
+    -- ones the opponent's reply, and ticking a reply would be wrong.
+    for index = #pz.solution, 0, -1 do
+        view:reviewGoTo(index)
+        local ticks = 0
+        for _, kind in pairs(view.board.marks) do
+            if kind == "correct" then ticks = ticks + 1 end
+        end
+        local expected = (index > 0 and index % 2 == 1) and 1 or 0
+        check(ticks == expected, string.format(
+            "review index %d should show %d tick(s), got %d", index, expected, ticks))
+    end
+
+    -- Redo clears it along with everything else.
+    view:onRedo()
+    check(view.board.marks[final_to] == nil, "a retry should start with no tick")
+end
+
+-- 30. A revealed solution is never ticked: those moves were shown, not found.
+do
+    local pz = puzzles[1]
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    net.responses = {
+        { status = 200, decoded = { puzzles = { apiEntry(pz) } } },
+        { status = 200, decoded = { rounds = { { id = pz.id, win = false, ratingDiff = -7 } },
+                                    puzzles = {}, glicko = { rating = 1954 } } },
+    }
+    plugin:start()
+    local view = shownView()
+    view:onShowSolution()
+    check(view.session.revealed == true, "the solution should be marked revealed")
+
+    for index = #pz.solution, 0, -1 do
+        view:reviewGoTo(index)
+        for _, kind in pairs(view.board.marks) do
+            check(kind ~= "correct",
+                "a revealed solution must not be ticked, index " .. index)
+        end
+    end
+end
+
 writeToken(nil)
 print(string.format("\n%d checks, %d failures", checks, failures))
 os.exit(failures == 0 and 0 or 1)
