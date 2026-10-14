@@ -1319,6 +1319,52 @@ do
     end
 end
 
+-- 31. A connected device must be used even when nothing resolves.
+-- KOReader's isOnline() is a DNS lookup of dns.msftncsi.com, and a Kobo radio
+-- coming out of power save fails it routinely while the connection is fine.
+-- runWhenOnline answers that case by prompting "Do you want to turn on Wi-Fi?"
+-- and then dropping the callback, so the puzzle was never submitted and the
+-- prompt appeared with Wi-Fi already up. runWhenConnected asks the question
+-- that actually matters: is there an IP to send from.
+do
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    stub.network.online = false
+    local pz = puzzles[1]
+    net.responses = {
+        { status = 200, decoded = { puzzles = { apiEntry(pz) } } },
+        { status = 200, decoded = { rounds = { { id = pz.id, win = true, ratingDiff = 11 } },
+                                    puzzles = {}, glicko = { rating = 1972 } } },
+    }
+    plugin:start()
+    local view = shownView()
+    check(view ~= nil, "a connected device should get a puzzle without a Wi-Fi prompt")
+    -- Guarded so a regression reports every check instead of erroring out here.
+    if view then
+        for i = 1, #pz.solution, 2 do tapMove(view, pz.solution[i]) end
+    end
+
+    check(stub.network.prompted == false,
+        "no Wi-Fi prompt should be raised while the device is connected")
+    check(#net.calls == 2,
+        "the result should be submitted, got " .. #net.calls .. " call(s)")
+    check(#plugin:pending() == 0, "a submitted result should not stay pending")
+end
+
+-- 32. With no connection at all, the prompt is correct and nothing is lost.
+do
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    stub.network.connected = false
+    stub.network.online = false
+    plugin:start()
+
+    check(stub.network.prompted == true,
+        "a genuinely disconnected device should still be asked to turn Wi-Fi on")
+    check(#net.calls == 0, "no request should be attempted with no connection")
+    check(shownView() == nil, "no board should open before any puzzle arrives")
+end
+
 writeToken(nil)
 print(string.format("\n%d checks, %d failures", checks, failures))
 os.exit(failures == 0 and 0 or 1)

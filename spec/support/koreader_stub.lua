@@ -3,7 +3,8 @@
 -- Only what the plugin actually touches is implemented.
 
 local M = { shown = {}, dirty = {}, messages = {}, closed = {}, broadcast = {},
-            scheduled = {}, defer_scheduled = false }
+            scheduled = {}, defer_scheduled = false,
+            network = { connected = true, online = true, prompted = false } }
 
 local function widgetClass()
     local C = {}
@@ -182,9 +183,24 @@ function M.install(opts)
         }
     end)
 
+    -- KOReader draws a distinction the plugin has to respect: "connected" is
+    -- an IP and a gateway, while "online" is a DNS lookup of dns.msftncsi.com.
+    -- On a Kobo those come apart constantly, because the radio dozes. Both
+    -- run_* helpers below mirror the real ones, including runWhenOnline's trap
+    -- of dropping the callback when the device is connected but not online.
     preload("ui/network/manager", function()
-        return { runWhenOnline = function(_, fn) fn() end,
-                 isOnline = function() return true end }
+        return {
+            isConnected = function() return M.network.connected end,
+            isOnline = function() return M.network.online end,
+            runWhenConnected = function(_, fn)
+                if M.network.connected then return fn() end
+                M.network.prompted = true
+            end,
+            runWhenOnline = function(_, fn)
+                if M.network.online then return fn() end
+                M.network.prompted = true
+            end,
+        }
     end)
     preload("datastorage", function()
         return { getSettingsDir = function() return opts.settings_dir or "/tmp" end }
@@ -233,6 +249,7 @@ function M.reset()
     M.scheduled = {}
     M.defer_scheduled = false
     M.last_dialog = nil
+    M.network = { connected = true, online = true, prompted = false }
 end
 
 --- Runs everything queued while deferring, in order.
