@@ -20,6 +20,18 @@ the screen, so other models work with no per-device code.
 
 ---
 
+## How it works
+
+[**An interactive figure of the whole loop**](docs/figure/) draws the plugin as a
+bench machine: a batch of ten puzzles arriving down a chute into a magazine, one
+card at a time going to the board, a print head that re-inks only the squares
+that changed, and the result going back up to lichess past a dial that reads
+your rating. Everything it shows is taken from the code; `docs/figure/README.md`
+maps each part to the function behind it, and says how to put the figure on a
+page of your own.
+
+---
+
 ## Requirements
 
 | What | Why | Where |
