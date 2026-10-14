@@ -8,9 +8,13 @@ Authentication is a personal access token with the puzzle:read and puzzle:write
 scopes, read from a one line file in the KOReader settings directory. That file
 is reachable over USB, so the token never has to be typed on the device.
 
-Network calls go through NetworkMgr:runWhenOnline because Kobo Wi-Fi is usually
-asleep. They are blocking, so each is preceded by a message that is given a tick
-to paint first.
+Network calls go through NetworkMgr:runWhenConnected, not runWhenOnline. Online
+means a DNS lookup of dns.msftncsi.com succeeded, and a dozing Kobo radio fails
+that routinely while perfectly associated; runWhenOnline then prompts for Wi-Fi
+and drops the callback, so the work silently never ran. Connected means an IP
+and a gateway, which is all a request needs: if it is wrong, the request fails
+and api.lua reports it. They are blocking, so each is preceded by a message that
+is given a tick to paint first.
 
 Setting KO_LICHESS_PUZZLES=1 in the environment turns this into the only thing
 KOReader does: the board opens at startup and leaving it exits KOReader, which
@@ -245,11 +249,12 @@ function Lichess:showAccount()
 end
 
 --- Runs blocking work once Wi-Fi is up, showing a message while it happens.
+-- Connected, not online: see the note at the top of this file.
 -- @string message shown during the call
 -- @func work returns value, err
 -- @func done called with (value, err)
 function Lichess:withNetwork(message, work, done)
-    NetworkMgr:runWhenOnline(function()
+    NetworkMgr:runWhenConnected(function()
         local info = InfoMessage:new{ text = message, timeout = nil }
         UIManager:show(info)
         -- Give the message a tick to paint before the blocking request starts.

@@ -199,6 +199,12 @@ ExcludeSyncFolders=\\.(?:adds|kobo|kobo-images)
 `.adds/koreader/settings/lichess_token.txt`, one line, no quotes. Verify the
 token itself with `./spec/live_check.sh <token>`.
 
+**Asked to turn on Wi-Fi when it is already connected.** Fixed in current
+versions. KOReader treats "online" as a successful DNS lookup, which a Kobo
+radio waking from power save fails often enough to be annoying, and the plugin
+used to read that as being offline. It now only asks for a connection, so if
+you still see the prompt the device genuinely is not on a network.
+
 ---
 
 ## Development
