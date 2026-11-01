@@ -151,6 +151,7 @@ want it.
 | **Next** | Next puzzle, once the current one has finished |
 | **←** / **→** | After a puzzle, step through the solution |
 | Page-turn buttons | Forward: next puzzle. Back: hint |
+| Turn the Kobo upside down | The board turns over with it, and back again |
 | Back | Leave |
 
 ### What the status line means
