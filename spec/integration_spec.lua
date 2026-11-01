@@ -1525,6 +1525,75 @@ do
     check(stub.network.prompted == false, "finishing offline should not raise a prompt")
 end
 
+-- 41. The board turns over with the Kobo. Unlocked, the turn is an event the
+-- board sits on top of; KOReader's lock instead flips the screen in the input
+-- layer on a half turn and ignores a quarter turn. It is listened to even if
+-- KOReader ignores the accelerometer, and the user's settings come back after.
+do
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    net.responses = { { status = 200, decoded = { puzzles = { apiEntry(puzzles[1]) } } } }
+    stub.reader_settings.input_ignore_gsensor = true
+    stub.gsensor.enabled = false
+    plugin:start()
+    local view = shownView()
+    if check(view ~= nil, "a puzzle view should be shown") then
+        view:onShow()
+        check(stub.gsensor.locked == true, "the board should lock turning to half turns")
+        check(stub.gsensor.enabled == true, "the board should listen to the accelerometer")
+        view:onCloseWidget()
+        check(stub.gsensor.locked == false, "closing should unlock it again")
+        check(stub.gsensor.enabled == false,
+            "closing should go back to ignoring the accelerometer, as the user set")
+    end
+end
+
+-- 42. A lock the user set stays set, a second Show cannot make the board's
+-- own lock look like the user's, and closing again restores nothing.
+do
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    net.responses = { { status = 200, decoded = { puzzles = { apiEntry(puzzles[1]) } } } }
+    stub.gsensor.locked = true
+    plugin:start()
+    local view = shownView()
+    if check(view ~= nil, "a puzzle view should be shown") then
+        view:onShow()
+        view:onCloseWidget()
+        check(stub.gsensor.locked == true, "a lock the user set should survive the board")
+        check(stub.gsensor.enabled == true, "an accelerometer the user uses should stay on")
+
+        stub.gsensor.locked = false
+        view:onShow()
+        view:onShow()
+        view:onCloseWidget()
+        check(stub.gsensor.locked == false,
+            "showing twice should not leave the board's own lock behind")
+
+        stub.gsensor.locked = true
+        view:onCloseWidget()
+        check(stub.gsensor.locked == true, "closing again should restore nothing")
+    end
+end
+
+-- 43. A Kobo without an accelerometer is left alone.
+do
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    net.responses = { { status = 200, decoded = { puzzles = { apiEntry(puzzles[1]) } } } }
+    stub.gsensor = { present = false, enabled = false, locked = false }
+    plugin:start()
+    local view = shownView()
+    if check(view ~= nil, "a puzzle view should be shown") then
+        view:onShow()
+        check(stub.gsensor.locked == false and stub.gsensor.enabled == false,
+            "a device with no accelerometer should not be touched")
+        view:onCloseWidget()
+        check(stub.gsensor.locked == false and stub.gsensor.enabled == false,
+            "closing should not touch it either")
+    end
+end
+
 writeToken(nil)
 print(string.format("\n%d checks, %d failures", checks, failures))
 os.exit(failures == 0 and 0 or 1)

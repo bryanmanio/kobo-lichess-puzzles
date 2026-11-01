@@ -714,17 +714,43 @@ function PuzzleView:onClose()
     return true
 end
 
+--- Turns the board over with the Kobo: upside down, and back again.
+-- KOReader's accelerometer lock does exactly that. Locked, the input layer
+-- flips the screen itself on a half turn and ignores a quarter turn, so the
+-- board keeps its layout, taps follow, and it works under a dialog too.
+-- Unlocked, a turn arrives as a SetRotationMode event that only the file
+-- manager and the reader handle, and the board covers both, so turning the
+-- Kobo over did nothing. The accelerometer is listened to even if KOReader is
+-- set to ignore it, since the lock keeps it to half turns. Both settings are
+-- put back when the board closes.
+function PuzzleView:followGSensor()
+    if self.gsensor_was_locked ~= nil then return end
+    if not Device:hasGSensor() or not Device.lockGSensor then return end
+    self.gsensor_was_locked = Device:isGSensorLocked()
+    Device:toggleGSensor(true)
+    Device:lockGSensor(true)
+end
+
+function PuzzleView:releaseGSensor()
+    if self.gsensor_was_locked == nil then return end
+    Device:lockGSensor(self.gsensor_was_locked)
+    Device:toggleGSensor(not G_reader_settings:isTrue("input_ignore_gsensor"))
+    self.gsensor_was_locked = nil
+end
+
 function PuzzleView:onCloseWidget()
     if self.take_back_scheduled then
         UIManager:unschedule(self.take_back_scheduled)
         self.take_back_scheduled = nil
     end
+    self:releaseGSensor()
     if self.board then self.board:freePieces() end
 end
 
 function PuzzleView:onShow()
     -- One full refresh per puzzle clears ghosting left by the previous one.
     UIManager:setDirty(self, "full")
+    self:followGSensor()
     return true
 end
 

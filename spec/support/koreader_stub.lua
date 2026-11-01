@@ -20,9 +20,16 @@ local function freshNetwork()
     }
 end
 
+-- The accelerometer as Device reports it: a Libra H2O, set up as KOReader
+-- ships, listening to it and not locked to the current orientation.
+local function freshGSensor()
+    return { present = true, enabled = true, locked = false }
+end
+
 local M = { shown = {}, dirty = {}, messages = {}, closed = {}, broadcast = {},
             scheduled = {}, defer_scheduled = false, slept = 0,
-            network = freshNetwork() }
+            network = freshNetwork(), gsensor = freshGSensor(),
+            reader_settings = {} }
 
 --- Stands in for blocking sleeps, which is when a staged connection appears.
 local function elapse(seconds)
@@ -72,6 +79,11 @@ function M.install(opts)
         package.preload[name] = function() return factory() end
     end
 
+    -- KOReader's global settings, which the plugin only ever reads.
+    G_reader_settings = {
+        isTrue = function(_, key) return M.reader_settings[key] == true end,
+    }
+
     preload("ffi/blitbuffer", function()
         return setmetatable({}, { __index = function(_, k) return "color:" .. k end })
     end)
@@ -79,6 +91,10 @@ function M.install(opts)
         return {
             isTouchDevice = function() return true end,
             hasKeys = function() return true end,
+            hasGSensor = function() return M.gsensor.present end,
+            isGSensorLocked = function() return M.gsensor.locked end,
+            lockGSensor = function(_, flag) M.gsensor.locked = flag end,
+            toggleGSensor = function(_, flag) M.gsensor.enabled = flag end,
             input = { group = { Back = "Back", PgFwd = "PgFwd", PgBack = "PgBack" } },
             screen = {
                 getWidth = function() return SCREEN_W end,
@@ -299,6 +315,8 @@ function M.reset()
     M.last_dialog = nil
     M.slept = 0
     M.network = freshNetwork()
+    M.gsensor = freshGSensor()
+    M.reader_settings = {}
 end
 
 --- Runs everything queued while deferring, in order.
