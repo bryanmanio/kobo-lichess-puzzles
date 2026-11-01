@@ -803,6 +803,7 @@ do
         end
         local joined = table.concat(labels, "|")
         check(joined:find("Rated", 1, true) ~= nil, "the menu should toggle rated, got " .. joined)
+        check(joined:find("Frontlight", 1, true) ~= nil, "the menu should reach the frontlight")
         check(joined:find("Account", 1, true) ~= nil, "the menu should show the account")
         check(joined:find("Quit", 1, true) ~= nil, "the menu should offer a way out")
 
@@ -1591,6 +1592,41 @@ do
         view:onCloseWidget()
         check(stub.gsensor.locked == false and stub.gsensor.enabled == false,
             "closing should not touch it either")
+    end
+end
+
+-- 44. The board menu reaches the frontlight, which kiosk mode otherwise hides
+-- entirely. A Kobo without a frontlight is not offered one.
+do
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    net.responses = { { status = 200, decoded = { puzzles = { apiEntry(puzzles[1]) } } } }
+    plugin:start()
+    local view = shownView()
+
+    --- Opens the board menu and returns it with its Frontlight button, if any.
+    local function openMenu()
+        view:onTapStatus()
+        local dialog = stub.last_dialog
+        for _, row in ipairs(dialog.buttons) do
+            for _, button in ipairs(row) do
+                if button.text == "Frontlight" then return dialog, button end
+            end
+        end
+        return dialog, nil
+    end
+
+    if check(view ~= nil, "a puzzle view should be shown") then
+        local dialog, button = openMenu()
+        if check(button ~= nil, "the board menu should offer the frontlight") then
+            button.callback()
+            check(stub.closed[#stub.closed] == dialog, "the menu should close first")
+            check(stub.light_dialogs == 1, "it should open KOReader's light dialog")
+        end
+
+        stub.frontlight = false
+        local _, missing = openMenu()
+        check(missing == nil, "a Kobo without a frontlight should not be offered one")
     end
 end
 

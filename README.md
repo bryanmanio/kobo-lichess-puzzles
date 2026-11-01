@@ -150,6 +150,7 @@ want it.
 | **Redo** | Restart the puzzle. Available as soon as it is lost |
 | **Next** | Next puzzle, once the current one has finished |
 | **←** / **→** | After a puzzle, step through the solution |
+| Tap the status line | Menu: Rated, Frontlight (brightness and warmth), Account, Quit |
 | Page-turn buttons | Forward: next puzzle. Back: hint |
 | Turn the Kobo upside down | The board turns over with it, and back again |
 | Back | Leave |

@@ -34,6 +34,7 @@ that mode KOReader's own menus are never on screen.
 
 local ButtonDialog = require("ui/widget/buttondialog")
 local DataStorage = require("datastorage")
+local Device = require("device")
 local Dispatcher = require("dispatcher")
 local Event = require("ui/event")
 local InfoMessage = require("ui/widget/infomessage")
@@ -188,44 +189,53 @@ function Lichess:leaveBoard()
 end
 
 --- The board's own menu, opened by tapping the status line.
--- Everything here is also in the main menu, which the kiosk never shows.
+-- Everything here is also in KOReader's menus, which the kiosk never shows.
 function Lichess:showBoardMenu(view)
     local dialog
     local function close()
         UIManager:close(dialog)
     end
-    dialog = ButtonDialog:new{
-        buttons = {
-            {{
-                text = self:isRated() and _("Rated: on") or _("Rated: off"),
-                callback = function()
-                    self.settings:saveSetting("rated", not self:isRated())
-                    self.settings:flush()
-                    -- The result is reported with whatever is set at submission
-                    -- time, so the status line has to follow the toggle rather
-                    -- than keep showing what was true when the puzzle opened.
-                    view.rated = self:isRated()
-                    view.signed_in = self.api:hasToken()
-                    view:updateStatus()
-                    close()
-                end,
-            }},
-            {{
-                text = _("Account"),
-                callback = function()
-                    close()
-                    self:showAccount()
-                end,
-            }},
-            {{
-                text = _("Quit"),
-                callback = function()
-                    close()
-                    view:onClose()
-                end,
-            }},
-        },
+    local buttons = {
+        {{
+            text = self:isRated() and _("Rated: on") or _("Rated: off"),
+            callback = function()
+                self.settings:saveSetting("rated", not self:isRated())
+                self.settings:flush()
+                -- The result is reported with whatever is set at submission
+                -- time, so the status line has to follow the toggle rather
+                -- than keep showing what was true when the puzzle opened.
+                view.rated = self:isRated()
+                view.signed_in = self.api:hasToken()
+                view:updateStatus()
+                close()
+            end,
+        }},
+        {{
+            text = _("Account"),
+            callback = function()
+                close()
+                self:showAccount()
+            end,
+        }},
+        {{
+            text = _("Quit"),
+            callback = function()
+                close()
+                view:onClose()
+            end,
+        }},
     }
+    if Device:hasFrontlight() then
+        -- KOReader's own dialog: brightness, and warmth on a Kobo that has it.
+        table.insert(buttons, 2, {{
+            text = _("Frontlight"),
+            callback = function()
+                close()
+                Device:showLightDialog()
+            end,
+        }})
+    end
+    dialog = ButtonDialog:new{ buttons = buttons }
     UIManager:show(dialog)
 end
 
