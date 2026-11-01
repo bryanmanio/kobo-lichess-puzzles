@@ -16,6 +16,8 @@ the screen, so other models work with no per-device code.
   and Redo.
 - Any mating move is accepted, not just the listed one, as on the website.
 - Results survive a dropped connection: they are queued and sent on the next run.
+- Never asks about Wi-Fi. KOReader drops it whenever the Kobo sleeps, and the
+  board rejoins your saved network by itself.
 - Optional NickelMenu entry that opens straight into the board.
 
 ---
@@ -199,11 +201,13 @@ ExcludeSyncFolders=\\.(?:adds|kobo|kobo-images)
 `.adds/koreader/settings/lichess_token.txt`, one line, no quotes. Verify the
 token itself with `./spec/live_check.sh <token>`.
 
-**Asked to turn on Wi-Fi when it is already connected.** Fixed in current
-versions. KOReader treats "online" as a successful DNS lookup, which a Kobo
-radio waking from power save fails often enough to be annoying, and the plugin
-used to read that as being offline. It now only asks for a connection, so if
-you still see the prompt the device genuinely is not on a network.
+**Asked to turn on Wi-Fi when it is already connected.** First check the copy
+on the Kobo is current: update your checkout, copy `lichesspuzzles.koplugin`
+across again, and restart KOReader. Current versions never ask. KOReader turns
+Wi-Fi off every time the Kobo sleeps, so after a wake the board reconnects to
+your saved network by itself and shows only "Connecting to Wi-Fi…". A request
+that fails while connected, usually a radio still waking from power save, is
+retried once, and Wi-Fi is only mentioned when no saved network can be reached.
 
 ---
 

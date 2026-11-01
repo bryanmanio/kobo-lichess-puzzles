@@ -8,13 +8,20 @@ Authentication is a personal access token with the puzzle:read and puzzle:write
 scopes, read from a one line file in the KOReader settings directory. That file
 is reachable over USB, so the token never has to be typed on the device.
 
-Network calls go through NetworkMgr:runWhenConnected, not runWhenOnline. Online
-means a DNS lookup of dns.msftncsi.com succeeded, and a dozing Kobo radio fails
-that routinely while perfectly associated; runWhenOnline then prompts for Wi-Fi
-and drops the callback, so the work silently never ran. Connected means an IP
-and a gateway, which is all a request needs: if it is wrong, the request fails
-and api.lua reports it. They are blocking, so each is preceded by a message that
-is given a tick to paint first.
+Network calls never ask whether to turn Wi-Fi on. What a request needs is a
+connection, an IP and a gateway, not KOReader's "online", which is a DNS lookup
+of dns.msftncsi.com that a dozing Kobo radio fails routinely while perfectly
+associated. With no connection the plugin makes one instead of asking, because
+KOReader turns Wi-Fi off every time the Kobo sleeps and by default never turns
+it back on, so its "Do you want to turn on Wi-Fi?" came up after nearly every
+wake. A connection already on its way, from KOReader restoring Wi-Fi after a
+wake or a radio still associating, is waited for rather than raced. A request
+that fails while connected is retried once, and errors only mention Wi-Fi when
+the device really is off the network.
+
+The wait and the requests are blocking, so each is preceded by a message that
+is given a chance to paint first. Blocking also keeps to one request at a time:
+nothing can be solved while the previous result is still being sent.
 
 Setting KO_LICHESS_PUZZLES=1 in the environment turns this into the only thing
 KOReader does: the board opens at startup and leaving it exits KOReader, which
@@ -34,9 +41,10 @@ local LuaSettings = require("luasettings")
 local NetworkMgr = require("ui/network/manager")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
+local ffiutil = require("ffi/util")
 local logger = require("logger")
 local _ = require("gettext")
-local T = require("ffi/util").template
+local T = ffiutil.template
 
 local API = require("api")
 local PuzzleView = require("puzzleview")
@@ -44,6 +52,16 @@ local PuzzleView = require("puzzleview")
 -- Refill when the queue runs below this, and ask for this many at a time.
 local QUEUE_LOW_WATER = 2
 local BATCH_SIZE = 10
+
+-- How long to wait for a connection that is already on its way. KOReader's
+-- restore script gives wpa_supplicant 15s, and then still has to get an
+-- address. Polled, so a quick connection is not kept waiting.
+local CONNECT_WAIT = 20
+local CONNECT_POLL = 0.25
+
+-- A request that fails while connected is usually the radio still waking from
+-- power save, which a short pause and one more attempt gets past.
+local RETRY_DELAY = 2
 
 local TOKEN_FILENAME = "lichess_token.txt"
 
@@ -248,26 +266,89 @@ function Lichess:showAccount()
     end)
 end
 
---- Runs blocking work once Wi-Fi is up, showing a message while it happens.
--- Connected, not online: see the note at the top of this file.
+--- True when KOReader is already bringing a connection up: the Wi-Fi module is
+--- loaded but has no address yet, or a turn-on or a restore after a wake is
+--- still under way. The pending flags are KOReader's own bookkeeping.
+local function connectionUnderway()
+    return NetworkMgr:isWifiOn()
+        or NetworkMgr.pending_connection
+        or NetworkMgr.pending_connectivity_check
+end
+
+--- Blocks until the device is connected, or CONNECT_WAIT has passed.
+-- @treturn bool whether it is connected
+local function waitForConnection()
+    local waited = 0
+    while not NetworkMgr:isConnected() do
+        if waited >= CONNECT_WAIT then return false end
+        ffiutil.usleep(CONNECT_POLL * 1e6)
+        waited = waited + CONNECT_POLL
+    end
+    return true
+end
+
+--- Runs `callback` once the device is connected, without ever asking.
+-- See the note at the top of this file.
+-- @func callback run once connected
+-- @func on_offline run instead when no connection could be made
+local function whenConnected(callback, on_offline)
+    if NetworkMgr:isConnected() then return callback() end
+
+    if connectionUnderway() then
+        -- Starting another connection now would only fight this one.
+        local info = InfoMessage:new{ text = _("Connecting to Wi-Fi…") }
+        UIManager:show(info)
+        UIManager:forceRePaint()
+        local connected = waitForConnection()
+        UIManager:close(info)
+        if connected then return callback() end
+    end
+
+    if not NetworkMgr.turnOnWifiAndWaitForConnection then
+        -- An older KOReader without it: let it ask, rather than never connect.
+        return NetworkMgr:runWhenConnected(callback)
+    end
+    -- What KOReader itself runs when set to turn Wi-Fi on: join the saved
+    -- network, showing progress but never a question. It returns false when
+    -- that failed, and nil without connecting when an earlier attempt still
+    -- holds the radio; either way the callback is never going to run.
+    local attempt = NetworkMgr:turnOnWifiAndWaitForConnection(callback)
+    if attempt == false or (attempt == nil and not NetworkMgr:isConnected()) then
+        on_offline()
+    end
+end
+
+--- Runs blocking work once there is a connection, with a message up meanwhile.
 -- @string message shown during the call
 -- @func work returns value, err
 -- @func done called with (value, err)
 function Lichess:withNetwork(message, work, done)
-    NetworkMgr:runWhenConnected(function()
+    whenConnected(function()
         local info = InfoMessage:new{ text = message, timeout = nil }
         UIManager:show(info)
         -- Give the message a tick to paint before the blocking request starts.
         UIManager:nextTick(function()
             local ok, value, err = pcall(work)
+            if ok and value == nil and err and err.code == "network"
+                and NetworkMgr:isConnected() then
+                ffiutil.sleep(RETRY_DELAY)
+                ok, value, err = pcall(work)
+            end
             UIManager:close(info)
             if not ok then
                 logger.err("lichesspuzzles: request failed:", value)
                 done(nil, { code = "internal", message = tostring(value) })
-            else
-                done(value, err)
+                return
             end
+            if err and err.code == "network" and not NetworkMgr:isConnected() then
+                -- The connection went away under the request, so this one
+                -- really is about Wi-Fi.
+                err = { code = "offline", message = err.message }
+            end
+            done(value, err)
         end)
+    end, function()
+        done(nil, { code = "offline" })
     end)
 end
 
@@ -279,7 +360,11 @@ function Lichess:showError(err)
         message = message .. "\n\n" ..
             _("Create a new token with both puzzle:read and puzzle:write.")
     elseif err and err.code == "network" then
-        message = _("Could not reach lichess. Check Wi-Fi and try again.")
+        -- The device is connected, or this would be "offline", so pointing at
+        -- Wi-Fi would send the user looking for a fault that is not there.
+        message = _("Could not reach lichess. Try again in a moment.")
+    elseif err and err.code == "offline" then
+        message = _("Not connected to Wi-Fi. Connect to a network and try again.")
     end
     UIManager:show(InfoMessage:new{ text = message })
 end

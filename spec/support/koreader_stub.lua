@@ -2,9 +2,37 @@
 -- puzzleview.lua and boardwidget.lua can be loaded and driven on a desktop.
 -- Only what the plugin actually touches is implemented.
 
+-- The network as NetworkMgr reports it. Tests change these to stage each case.
+local function freshNetwork()
+    return {
+        connected = true,     -- isConnected: an IP and a gateway
+        online = true,        -- isOnline: a DNS lookup succeeded
+        wifi_on = true,       -- isWifiOn: the Wi-Fi module is loaded
+        -- KOReader's own flags for a connection it is still making.
+        pending_connection = false,
+        pending_connectivity_check = false,
+        -- A count of blocking waits after which the connection comes up, the
+        -- way a radio that is still associating eventually gets an address.
+        connects_after = nil,
+        can_connect = true,   -- turning Wi-Fi on finds a saved network
+        turned_on = 0,        -- how many times Wi-Fi was asked to turn on
+        prompted = false,     -- "Do you want to turn on Wi-Fi?" was raised
+    }
+end
+
 local M = { shown = {}, dirty = {}, messages = {}, closed = {}, broadcast = {},
-            scheduled = {}, defer_scheduled = false,
-            network = { connected = true, online = true, prompted = false } }
+            scheduled = {}, defer_scheduled = false, slept = 0,
+            network = freshNetwork() }
+
+--- Stands in for blocking sleeps, which is when a staged connection appears.
+local function elapse(seconds)
+    M.slept = M.slept + seconds
+    local net = M.network
+    if net.connects_after and not net.connected then
+        net.connects_after = net.connects_after - 1
+        if net.connects_after <= 0 then net.connected = true end
+    end
+end
 
 local function widgetClass()
     local C = {}
@@ -164,6 +192,7 @@ function M.install(opts)
             setDirty = function(_, w, mode, region)
                 M.dirty[#M.dirty + 1] = { widget = w, mode = mode, region = region }
             end,
+            forceRePaint = function() end,
             -- Deferred work runs immediately so flows complete inside the
             -- test. Set M.defer_scheduled to queue it instead, for assertions
             -- about what is on screen before a timer fires.
@@ -189,9 +218,10 @@ function M.install(opts)
     -- run_* helpers below mirror the real ones, including runWhenOnline's trap
     -- of dropping the callback when the device is connected but not online.
     preload("ui/network/manager", function()
-        return {
+        local NetworkMgr = {
             isConnected = function() return M.network.connected end,
             isOnline = function() return M.network.online end,
+            isWifiOn = function() return M.network.wifi_on end,
             runWhenConnected = function(_, fn)
                 if M.network.connected then return fn() end
                 M.network.prompted = true
@@ -200,7 +230,23 @@ function M.install(opts)
                 if M.network.online then return fn() end
                 M.network.prompted = true
             end,
+            -- What KOReader's "turn on" setting runs: join a saved network
+            -- without asking. Like the real one, it returns false when no
+            -- connection could be made, and then never runs the callback.
+            turnOnWifiAndWaitForConnection = function(_, fn)
+                M.network.turned_on = M.network.turned_on + 1
+                if not M.network.can_connect then return false end
+                M.network.wifi_on = true
+                M.network.connected = true
+                fn()
+            end,
         }
+        -- The pending flags are plain fields on the real NetworkMgr, read
+        -- through to the staged state so that reset() clears them too.
+        local PENDING = { pending_connection = true, pending_connectivity_check = true }
+        return setmetatable(NetworkMgr, { __index = function(_, key)
+            if PENDING[key] then return M.network[key] end
+        end })
     end)
     preload("datastorage", function()
         return { getSettingsDir = function() return opts.settings_dir or "/tmp" end }
@@ -219,6 +265,8 @@ function M.install(opts)
                     return tostring(args[tonumber(n)])
                 end))
             end,
+            sleep = function(seconds) elapse(seconds) end,
+            usleep = function(usec) elapse(usec / 1e6) end,
         }
     end)
     preload("luasettings", function()
@@ -249,7 +297,8 @@ function M.reset()
     M.scheduled = {}
     M.defer_scheduled = false
     M.last_dialog = nil
-    M.network = { connected = true, online = true, prompted = false }
+    M.slept = 0
+    M.network = freshNetwork()
 end
 
 --- Runs everything queued while deferring, in order.
