@@ -19,6 +19,8 @@ package.preload["socket.http"] = function()
         net.calls[#net.calls + 1] = req
         local r = table.remove(net.responses, 1)
         if not r then error("unexpected HTTP call to " .. tostring(req.url)) end
+        -- Lets a test change the world mid-request, e.g. drop the connection.
+        if r.effect then r.effect() end
         if r.fail then return nil, r.fail end
         net.decoded = r.decoded
         if req.sink then req.sink("body") end
@@ -85,6 +87,19 @@ local function tapMove(view, uci)
     local to = Chess.algebraicToSquare(string.sub(uci, 3, 4))
     view:onSquareTap(from)
     view:onSquareTap(to)
+end
+
+--- The last message put up for the user, or "" if there was none.
+local function lastMessage()
+    return stub.messages[#stub.messages] or ""
+end
+
+--- Whether any message so far contained `text`.
+local function said(text)
+    for i = 1, #stub.messages do
+        if tostring(stub.messages[i]):find(text, 1, true) then return true end
+    end
+    return false
 end
 
 -- 1. The token is read from the USB-reachable file, with trailing newline tolerated.
@@ -169,6 +184,8 @@ do
     local pz = puzzles[1]
     net.responses = {
         { status = 200, decoded = { puzzles = { apiEntry(pz) } } },
+        -- Twice, because a single failure while connected is retried.
+        { fail = "connection refused" },
         { fail = "connection refused" },
     }
     plugin:start()
@@ -1324,8 +1341,8 @@ end
 -- coming out of power save fails it routinely while the connection is fine.
 -- runWhenOnline answers that case by prompting "Do you want to turn on Wi-Fi?"
 -- and then dropping the callback, so the puzzle was never submitted and the
--- prompt appeared with Wi-Fi already up. runWhenConnected asks the question
--- that actually matters: is there an IP to send from.
+-- prompt appeared with Wi-Fi already up. Being connected, with an IP to send
+-- from, is the question that actually matters.
 do
     writeToken("lip_testtoken123")
     local plugin = newPlugin()
@@ -1351,18 +1368,161 @@ do
     check(#plugin:pending() == 0, "a submitted result should not stay pending")
 end
 
--- 32. With no connection at all, the prompt is correct and nothing is lost.
+-- 32. Wi-Fi off, which is how KOReader leaves it after every sleep. The
+-- plugin joins the saved network itself: asking here put the prompt up after
+-- nearly every wake, with the user certain they were still connected.
 do
     writeToken("lip_testtoken123")
     local plugin = newPlugin()
     stub.network.connected = false
     stub.network.online = false
+    stub.network.wifi_on = false
+    net.responses = { { status = 200, decoded = { puzzles = { apiEntry(puzzles[1]) } } } }
     plugin:start()
 
-    check(stub.network.prompted == true,
-        "a genuinely disconnected device should still be asked to turn Wi-Fi on")
+    check(stub.network.prompted == false, "Wi-Fi being off should not raise a prompt")
+    check(stub.network.turned_on == 1,
+        "Wi-Fi should be turned on, once, got " .. stub.network.turned_on)
+    check(shownView() ~= nil, "the puzzle should arrive once connected")
+end
+
+-- 33. With no saved network in range there really is no connection, the one
+-- time Wi-Fi is worth mentioning. Even then it is said, not asked.
+do
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    stub.network.connected = false
+    stub.network.online = false
+    stub.network.wifi_on = false
+    stub.network.can_connect = false
+    plugin:start()
+
+    check(stub.network.prompted == false, "no network in range should not raise a prompt")
     check(#net.calls == 0, "no request should be attempted with no connection")
     check(shownView() == nil, "no board should open before any puzzle arrives")
+    check(lastMessage():find("Wi-Fi", 1, true) ~= nil,
+        "the user should be told Wi-Fi is the problem, got: " .. lastMessage())
+end
+
+-- 34. A radio still associating gets the time to finish. Turning Wi-Fi on
+-- again would only fight the attempt already under way.
+do
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    stub.network.connected = false
+    stub.network.connects_after = 3
+    net.responses = { { status = 200, decoded = { puzzles = { apiEntry(puzzles[1]) } } } }
+    plugin:start()
+
+    check(stub.network.prompted == false, "a connection on its way should not raise a prompt")
+    check(stub.network.turned_on == 0, "Wi-Fi should not be turned on a second time")
+    check(said("Connecting to Wi-Fi"), "the wait should say what it is waiting for")
+    check(shownView() ~= nil, "the puzzle should arrive once the connection is up")
+end
+
+-- 35. Waking with KOReader set to restore Wi-Fi, the module is not loaded yet
+-- but a restore is under way. That is waited for too, not raced.
+do
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    stub.network.connected = false
+    stub.network.wifi_on = false
+    stub.network.pending_connectivity_check = true
+    stub.network.connects_after = 8
+    net.responses = { { status = 200, decoded = { puzzles = { apiEntry(puzzles[1]) } } } }
+    plugin:start()
+
+    check(stub.network.prompted == false, "a restore under way should not raise a prompt")
+    check(stub.network.turned_on == 0, "a restore under way should not be raced")
+    check(shownView() ~= nil, "the puzzle should arrive once Wi-Fi is restored")
+end
+
+-- 36. A radio that never gets an address is given up on after a bounded wait,
+-- and a fresh connection is made instead.
+do
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    stub.network.connected = false
+    net.responses = { { status = 200, decoded = { puzzles = { apiEntry(puzzles[1]) } } } }
+    plugin:start()
+
+    check(stub.slept > 0 and stub.slept <= 30,
+        "the wait should be bounded, waited " .. stub.slept .. "s")
+    check(stub.network.turned_on == 1, "after the wait Wi-Fi should be brought up afresh")
+    check(stub.network.prompted == false, "giving up on the wait should not raise a prompt")
+    check(shownView() ~= nil, "the puzzle should arrive over the fresh connection")
+end
+
+-- 37. Connected, but the first request fails: on a Kobo usually the radio
+-- still waking from power save. One retry gets through, silently.
+do
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    net.responses = {
+        { fail = "host or service not provided, or not known" },
+        { status = 200, decoded = { puzzles = { apiEntry(puzzles[1]) } } },
+    }
+    plugin:start()
+
+    check(#net.calls == 2, "the failed request should be retried once, got " .. #net.calls)
+    check(shownView() ~= nil, "the retry should deliver the puzzle")
+    check(not said("Could not"),
+        "a retry that worked should not be reported, got: " .. lastMessage())
+end
+
+-- 38. Lichess unreachable while the device is connected: the error must not
+-- point at Wi-Fi, which is working.
+do
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    net.responses = { { fail = "timeout" }, { fail = "timeout" } }
+    plugin:start()
+
+    check(#net.calls == 2, "a request should be retried only once, got " .. #net.calls)
+    check(lastMessage():find("lichess", 1, true) ~= nil,
+        "the error should say lichess could not be reached, got: " .. lastMessage())
+    check(lastMessage():find("Wi-Fi", 1, true) == nil,
+        "a connected device should not be told to check Wi-Fi, got: " .. lastMessage())
+end
+
+-- 39. A connection that drops under the request is a Wi-Fi problem after all,
+-- and with it gone there is nothing to retry over.
+do
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    net.responses = {
+        { fail = "timeout", effect = function() stub.network.connected = false end },
+    }
+    plugin:start()
+
+    check(#net.calls == 1, "a lost connection should not be retried over, got " .. #net.calls)
+    check(lastMessage():find("Wi-Fi", 1, true) ~= nil,
+        "a lost connection should be named as such, got: " .. lastMessage())
+end
+
+-- 40. A puzzle finished with no network to be had is kept for later, the
+-- board says so, and still nothing is asked.
+do
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    local pz = puzzles[1]
+    net.responses = { { status = 200, decoded = { puzzles = { apiEntry(pz) } } } }
+    plugin:start()
+    local view = shownView()
+    -- The Kobo slept mid-puzzle: KOReader took Wi-Fi down, and there is no
+    -- saved network around to rejoin.
+    stub.network.connected = false
+    stub.network.wifi_on = false
+    stub.network.can_connect = false
+    if check(view ~= nil, "the puzzle should open while still connected") then
+        for i = 1, #pz.solution, 2 do tapMove(view, pz.solution[i]) end
+        check(tostring(view.status_text.text):lower():find("sent", 1, true) ~= nil,
+            "the board should say the result will be sent later, got: "
+            .. tostring(view.status_text.text))
+    end
+    check(#plugin:pending() == 1, "the result should stay pending")
+    check(#net.calls == 1, "nothing should be sent without a connection")
+    check(stub.network.prompted == false, "finishing offline should not raise a prompt")
 end
 
 writeToken(nil)
