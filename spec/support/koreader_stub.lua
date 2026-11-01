@@ -29,7 +29,7 @@ end
 local M = { shown = {}, dirty = {}, messages = {}, closed = {}, broadcast = {},
             scheduled = {}, defer_scheduled = false, slept = 0,
             network = freshNetwork(), gsensor = freshGSensor(),
-            reader_settings = {} }
+            reader_settings = {}, frontlight = true, light_dialogs = 0 }
 
 --- Stands in for blocking sleeps, which is when a staged connection appears.
 local function elapse(seconds)
@@ -95,6 +95,8 @@ function M.install(opts)
             isGSensorLocked = function() return M.gsensor.locked end,
             lockGSensor = function(_, flag) M.gsensor.locked = flag end,
             toggleGSensor = function(_, flag) M.gsensor.enabled = flag end,
+            hasFrontlight = function() return M.frontlight end,
+            showLightDialog = function() M.light_dialogs = M.light_dialogs + 1 end,
             input = { group = { Back = "Back", PgFwd = "PgFwd", PgBack = "PgBack" } },
             screen = {
                 getWidth = function() return SCREEN_W end,
@@ -317,6 +319,8 @@ function M.reset()
     M.network = freshNetwork()
     M.gsensor = freshGSensor()
     M.reader_settings = {}
+    M.frontlight = true
+    M.light_dialogs = 0
 end
 
 --- Runs everything queued while deferring, in order.
