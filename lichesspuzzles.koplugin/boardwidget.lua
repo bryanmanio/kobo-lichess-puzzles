@@ -373,6 +373,14 @@ function BoardWidget:paintTo(bb, x, y)
             end
         end
     end
+
+    -- Night mode inverts the whole screen, which would turn White's pieces
+    -- black and Black's white, contradicting "White to play". Pre-invert the
+    -- board so the screen's inversion cancels out and it shows true colours,
+    -- the same way KOReader's ImageWidget keeps photos looking right.
+    if Screen.night_mode then
+        bb:invertRect(x, y, s * 8, s * 8)
+    end
 end
 
 function BoardWidget:onTapSquare(_, ges)
