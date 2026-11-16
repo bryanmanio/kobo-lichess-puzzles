@@ -33,6 +33,14 @@ local DARK_SQUARE  = Blitbuffer.COLOR_LIGHT_GRAY      -- 0xCC
 local LASTMOVE     = Blitbuffer.COLOR_GRAY_9          -- 0x99
 local MARK         = Blitbuffer.COLOR_BLACK
 
+-- Night mode inverts everything painted, so these are the inverse of what
+-- shows: light squares appear as 0x55, dark as 0x33 and the last move as 0x88.
+-- Simply inverting the day colours would make light squares pure black, and
+-- Black's pieces would then vanish into them except for their outline.
+local NIGHT_LIGHT_SQUARE = Blitbuffer.COLOR_GRAY         -- 0xAA, shows 0x55
+local NIGHT_DARK_SQUARE  = Blitbuffer.COLOR_LIGHT_GRAY   -- 0xCC, shows 0x33
+local NIGHT_LASTMOVE     = Blitbuffer.COLOR_GRAY_7       -- 0x77, shows 0x88
+
 --- Draws a thick diagonal stroke, centred on the line it describes.
 -- Blitbuffer only fills axis-aligned rectangles, so a diagonal is stepped out
 -- of small squares.
@@ -65,11 +73,21 @@ local function paintBadge(bb, sx, sy, size, kind, piece_code)
     local cx = sx + size - r - math.floor(r / 3)
     local cy = sy + r + math.floor(r / 3)
 
-    -- Default to a dark badge: the squares are light, so it reads on an empty
-    -- square as well as on a white piece.
-    local over_black = piece_code ~= nil and string.sub(piece_code, 1, 1) == "b"
-    local disc = over_black and Blitbuffer.COLOR_WHITE or MARK
-    local ink = over_black and MARK or Blitbuffer.COLOR_WHITE
+    -- The badge contrasts with whatever is under it as the user sees it.
+    -- Pieces keep their true colours in night mode, but the squares go dark,
+    -- so an empty square calls for a dark badge by day and a light one by night.
+    local night = Screen.night_mode
+    local light_badge
+    if piece_code ~= nil then
+        light_badge = string.sub(piece_code, 1, 1) == "b"
+    else
+        light_badge = night
+    end
+    -- Night mode inverts everything painted, so paint the opposite of what
+    -- should show.
+    if night then light_badge = not light_badge end
+    local disc = light_badge and Blitbuffer.COLOR_WHITE or MARK
+    local ink = light_badge and MARK or Blitbuffer.COLOR_WHITE
 
     bb:paintCircle(cx, cy, r, disc)
     -- A rim in the ink colour, so a light badge still has an edge where it
@@ -180,9 +198,10 @@ function BoardWidget:getSize()
     return Geom:new{ w = self.dimen.w, h = self.dimen.h }
 end
 
---- Loads and caches a piece bitmap at the current square size.
+--- Renders and caches a piece bitmap at the current square size, in its
+--- true colours.
 -- @string code two character piece code such as "wQ"
-local function loadPiece(self, code)
+local function renderPiece(self, code)
     local cached = self.piece_cache[code]
     if cached ~= nil then return cached end
     local path = self.pieces_dir .. code .. ".svg"
@@ -196,6 +215,42 @@ local function loadPiece(self, code)
     end
     self.piece_cache[code] = bb
     return bb
+end
+
+--- A copy with every colour inverted and alpha untouched.
+local function invertedCopy(bb)
+    local inv = bb:copy()
+    for y = 0, inv:getHeight() - 1 do
+        for x = 0, inv:getWidth() - 1 do
+            local p = inv:getPixelP(x, y)
+            p[0] = p[0]:invert()
+        end
+    end
+    return inv
+end
+
+--- The piece bitmap to paint right now.
+-- In night mode the screen inverts everything painted. The squares are left to
+-- go dark with the rest of the screen, but a piece has to keep its true colour
+-- or White's pieces show black, contradicting "White to play". So the night
+-- variant has its colours pre-inverted and the screen's inversion cancels it
+-- out. Its anti-aliased edges still blend against the dark square, because the
+-- blend happens before the screen inverts.
+-- @string code two character piece code such as "wQ"
+local function loadPiece(self, code)
+    if not Screen.night_mode then return renderPiece(self, code) end
+    local key = code .. ":night"
+    local cached = self.piece_cache[key]
+    if cached ~= nil then return cached end
+    local day = renderPiece(self, code)
+    local ok, inv = false, nil
+    if day then
+        ok, inv = pcall(invertedCopy, day)
+        if not ok then logger.warn("lichesspuzzles: could not invert piece", code, inv) end
+    end
+    inv = ok and inv or false
+    self.piece_cache[key] = inv
+    return inv
 end
 
 function BoardWidget:freePieces()
@@ -324,6 +379,10 @@ function BoardWidget:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
     local s = self.square_size
     local pos = self.position
+    local night = Screen.night_mode
+    local light_fill = night and NIGHT_LIGHT_SQUARE or LIGHT_SQUARE
+    local dark_fill = night and NIGHT_DARK_SQUARE or DARK_SQUARE
+    local lastmove_fill = night and NIGHT_LASTMOVE or LASTMOVE
 
     for sq = 0, 119 do
         if sq % 16 <= 7 then
@@ -332,10 +391,10 @@ function BoardWidget:paintTo(bb, x, y)
 
             -- A square is dark when file and rank have the same parity.
             local dark = ((Chess.fileOf(sq) + Chess.rankOf(sq)) % 2) == 0
-            local fill = dark and DARK_SQUARE or LIGHT_SQUARE
+            local fill = dark and dark_fill or light_fill
             if self.last_move
                 and (sq == self.last_move.from or sq == self.last_move.to) then
-                fill = LASTMOVE
+                fill = lastmove_fill
             end
             bb:paintRect(sx, sy, s, s, fill)
 
@@ -374,13 +433,6 @@ function BoardWidget:paintTo(bb, x, y)
         end
     end
 
-    -- Night mode inverts the whole screen, which would turn White's pieces
-    -- black and Black's white, contradicting "White to play". Pre-invert the
-    -- board so the screen's inversion cancels out and it shows true colours,
-    -- the same way KOReader's ImageWidget keeps photos looking right.
-    if Screen.night_mode then
-        bb:invertRect(x, y, s * 8, s * 8)
-    end
 end
 
 function BoardWidget:onTapSquare(_, ges)
