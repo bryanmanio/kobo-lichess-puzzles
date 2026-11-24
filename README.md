@@ -15,6 +15,8 @@ the screen, so other models work with no per-device code.
 - Hints that make the puzzle casual rather than failing it, a solution replay,
   and Redo.
 - Any mating move is accepted, not just the listed one, as on the website.
+- Battery level in the top right of the board, using KOReader's own battery
+  icon, so you know when to charge without leaving the puzzle.
 - Results survive a dropped connection: they are queued and sent on the next run.
 - Never asks about Wi-Fi. KOReader drops it whenever the Kobo sleeps, and the
   board rejoins your saved network by itself.

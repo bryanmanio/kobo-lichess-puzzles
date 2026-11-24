@@ -60,11 +60,20 @@ local Session = require("session")
 -- in the screen's top-left corner instead of on the status line, and updates
 -- often never reached the panel. Inverting the whole strip is also the most
 -- legible "this puzzle is over" signal e-ink can give.
-local StatusBar = CenterContainer:extend{ inverted = false }
+--
+-- The battery level sits in the strip's right-hand end. It is painted here
+-- rather than being a second child, so it always lands at the strip's real
+-- right edge, and is inverted along with everything else when the puzzle ends.
+local StatusBar = CenterContainer:extend{ inverted = false, battery = nil }
 
 function StatusBar:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
     CenterContainer.paintTo(self, bb, x, y)
+    if self.battery then
+        local size = self.battery:getSize()
+        self.battery:paintTo(bb, x + self.dimen.w - size.w,
+            y + math.floor((self.dimen.h - size.h) / 2))
+    end
     if self.inverted then
         bb:invertRect(x, y, self.dimen.w, self.dimen.h)
     end
@@ -127,10 +136,25 @@ function PuzzleView:init()
         self.board:setLastMove(self.session.last_move.from, self.session.last_move.to)
     end
 
+    -- The battery is sized for its widest reading, and the status line gives
+    -- up that much room at both ends, so it stays centred on the board and a
+    -- long line truncates before it can run into the battery.
+    local status_width = self.board.dimen.w
+    local battery_label = self:batteryLabel()
+    if battery_label then
+        self.battery_text = TextWidget:new{
+            text = self:batteryLabel(100, true),
+            face = Font:getFace("cfont", 20),
+        }
+        local reserve = self.battery_text:getSize().w + Screen:scaleBySize(10)
+        status_width = math.max(status_width - 2 * reserve, Screen:scaleBySize(100))
+        self.battery_text:setText(battery_label)
+    end
+
     self.status_text = TextWidget:new{
         text = self:statusLine(),
         face = Font:getFace("cfont", 20),
-        max_width = self.board.dimen.w,
+        max_width = status_width,
     }
     -- VerticalGroup caches each child's width when it first lays out, so a
     -- status line that later gets shorter would keep being painted at the
@@ -142,6 +166,7 @@ function PuzzleView:init()
             w = self.board.dimen.w,
             h = self.status_text:getSize().h,
         },
+        battery = self.battery_text,
         self.status_text,
     }
 
@@ -314,7 +339,64 @@ function PuzzleView:onTapStatus()
     return true
 end
 
+--- The battery as shown in the strip: KOReader's own battery icon, the same
+--- one its reader footer uses, and the percentage.
+-- @int[opt] capacity a reading to show instead of the device's, for sizing
+-- @bool[opt] charging with `capacity`, whether to show it as charging
+-- @treturn string|nil nil on a device with no battery to report
+function PuzzleView:batteryLabel(capacity, charging)
+    if not Device:hasBattery() then return nil end
+    local powerd = Device:getPowerDevice()
+    local charged = false
+    if not capacity then
+        capacity = powerd:getCapacity()
+        charging = powerd:isCharging()
+        charged = powerd.isCharged and powerd:isCharged() or false
+    end
+    local label = string.format("%d%%", capacity)
+    if powerd.getBatterySymbol then
+        label = powerd:getBatterySymbol(charged, charging, capacity) .. " " .. label
+    end
+    return label
+end
+
+--- Brings the battery reading up to date, without refreshing anything.
+-- Every move, hint and result calls this through updateStatus, so while the
+-- board is in use the battery costs no e-ink refresh of its own. There is
+-- deliberately no timer for a board left idle: KOReader puts the Kobo to
+-- sleep before the reading goes noticeably stale, and waking updates it.
+-- @treturn bool whether the reading changed
+function PuzzleView:updateBattery()
+    if not self.battery_text then return false end
+    local label = self:batteryLabel()
+    if label == self.battery_text.text then return false end
+    self.battery_text:setText(label)
+    return true
+end
+
+--- Puts a new battery reading on the panel by refreshing the status strip it
+--- sits in, and refreshes nothing when the reading has not changed.
+function PuzzleView:refreshBattery()
+    if self:updateBattery() then self:updateStatus() end
+end
+
+-- Plugging the charger in or out, and waking up, are announced to every
+-- widget on screen, so the battery changes the moment they happen. None of
+-- these return true: other widgets need to hear them too.
+function PuzzleView:onCharging()
+    self:refreshBattery()
+end
+
+function PuzzleView:onNotCharging()
+    self:refreshBattery()
+end
+
+function PuzzleView:onResume()
+    self:refreshBattery()
+end
+
 function PuzzleView:updateStatus()
+    self:updateBattery()
     self.status_text:setText(self:statusLine())
     -- Refresh the whole status strip, not just the new text: a shorter line
     -- must erase what the longer one left on the panel.
@@ -751,6 +833,7 @@ function PuzzleView:onShow()
     -- One full refresh per puzzle clears ghosting left by the previous one.
     UIManager:setDirty(self, "full")
     self:followGSensor()
+    self:updateBattery()
     return true
 end
 

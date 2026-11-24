@@ -26,9 +26,15 @@ local function freshGSensor()
     return { present = true, enabled = true, locked = false }
 end
 
+-- The battery as powerd reports it.
+local function freshBattery()
+    return { present = true, capacity = 78, charging = false, charged = false }
+end
+
 local M = { shown = {}, dirty = {}, messages = {}, closed = {}, broadcast = {},
             scheduled = {}, defer_scheduled = false, slept = 0,
             network = freshNetwork(), gsensor = freshGSensor(),
+            battery = freshBattery(),
             reader_settings = {}, frontlight = true, light_dialogs = 0 }
 
 --- Stands in for blocking sleeps, which is when a staged connection appears.
@@ -97,6 +103,19 @@ function M.install(opts)
             toggleGSensor = function(_, flag) M.gsensor.enabled = flag end,
             hasFrontlight = function() return M.frontlight end,
             showLightDialog = function() M.light_dialogs = M.light_dialogs + 1 end,
+            hasBattery = function() return M.battery.present end,
+            getPowerDevice = function()
+                return {
+                    getCapacity = function() return M.battery.capacity end,
+                    isCharging = function() return M.battery.charging end,
+                    isCharged = function() return M.battery.charged end,
+                    -- A readable stand-in for KOReader's icon glyphs.
+                    getBatterySymbol = function(_, charged, charging)
+                        if charged then return "[full]" end
+                        return charging and "[charging]" or "[battery]"
+                    end,
+                }
+            end,
             input = { group = { Back = "Back", PgFwd = "PgFwd", PgBack = "PgBack" } },
             screen = {
                 getWidth = function() return SCREEN_W end,
@@ -318,6 +337,7 @@ function M.reset()
     M.slept = 0
     M.network = freshNetwork()
     M.gsensor = freshGSensor()
+    M.battery = freshBattery()
     M.reader_settings = {}
     M.frontlight = true
     M.light_dialogs = 0

@@ -1630,6 +1630,128 @@ do
     end
 end
 
+--- Starts a fresh plugin on the first fixture puzzle and returns its view.
+local function openBoard()
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    net.responses = { { status = 200, decoded = { puzzles = { apiEntry(puzzles[1]) } } } }
+    plugin:start()
+    return plugin, shownView()
+end
+
+--- Counts refreshes queued since `from` (an index into stub.dirty).
+local function refreshesSince(from)
+    return #stub.dirty - from
+end
+
+-- 45. The battery sits at the right-hand end of the status strip, and the
+-- status line gives up room at both ends for it, so it stays centred and a
+-- long line truncates instead of running into the battery.
+do
+    local _, view = openBoard()
+    if check(view ~= nil, "a puzzle view should be shown") then
+        local label = tostring(view.battery_text and view.battery_text.text)
+        check(label:find("78%", 1, true) ~= nil, "the percentage should be shown, got " .. label)
+        check(label:find("[battery]", 1, true) ~= nil, "KOReader's icon should lead, got " .. label)
+        check(view.status_container.battery == view.battery_text,
+            "the battery should be painted by the status strip")
+        check(view.status_text.max_width
+                <= view.board.dimen.w - 2 * view.battery_text:getSize().w,
+            "the status line should give up the battery's width at both ends")
+
+        local inverted_calls = {}
+        local fake_bb = { invertRect = function(_, x, y, w, h)
+            inverted_calls[#inverted_calls + 1] = { x = x, y = y, w = w, h = h }
+        end }
+        view.status_container:paintTo(fake_bb, 37, 101)
+        local at = view.battery_text.painted_at
+        local strip = view.status_container.dimen
+        check(at and at.x + view.battery_text:getSize().w == 37 + strip.w,
+            "the battery should end flush with the strip's right edge")
+
+        -- It flips with the rest of the strip when the puzzle is over.
+        view.status_container.inverted = true
+        view.status_container:paintTo(fake_bb, 37, 101)
+        check(#inverted_calls == 1 and inverted_calls[1].w == strip.w,
+            "the inversion should still cover the whole strip, battery included")
+    end
+end
+
+-- 46. A device with no battery to report shows none, and nothing breaks.
+do
+    writeToken("lip_testtoken123")
+    local plugin = newPlugin()
+    net.responses = { { status = 200, decoded = { puzzles = { apiEntry(puzzles[1]) } } } }
+    stub.battery.present = false
+    plugin:start()
+    local view = shownView()
+    if check(view ~= nil, "a puzzle view should be shown") then
+        check(view.battery_text == nil, "no battery should be shown")
+        check(view.status_text.max_width == view.board.dimen.w,
+            "the status line should keep the board's whole width")
+        view:onShow()
+        local before = #stub.dirty
+        view:onCharging()
+        view:onResume()
+        check(refreshesSince(before) == 0, "nothing should be refreshed for it")
+    end
+end
+
+-- 47. A status update brings the battery up to date without a refresh of its
+-- own: the strip is being refreshed anyway, and e-ink refreshes are not free.
+do
+    local _, view = openBoard()
+    if check(view ~= nil, "a puzzle view should be shown") then
+        stub.battery.capacity = 61
+        local before = #stub.dirty
+        view:updateStatus()
+        check(tostring(view.battery_text.text):find("61%", 1, true) ~= nil,
+            "the new reading should be shown, got " .. tostring(view.battery_text.text))
+        check(refreshesSince(before) == 1
+            and stub.dirty[#stub.dirty].region == view.status_container.dimen,
+            "only the strip's own refresh should happen")
+    end
+end
+
+-- 48. Plugging the charger in or out, or waking up, puts the new reading on
+-- the panel at once by refreshing the status strip, and refreshes nothing
+-- when the reading has not changed.
+do
+    local _, view = openBoard()
+    if check(view ~= nil, "a puzzle view should be shown") then
+        view.status_container:paintTo({ invertRect = function() end }, 37, 101)
+
+        stub.battery.charging = true
+        local before = #stub.dirty
+        check(view:onCharging() ~= true,
+            "the charger event should be left for other widgets too")
+        check(tostring(view.battery_text.text):find("[charging]", 1, true) ~= nil,
+            "the charging icon should be shown, got " .. tostring(view.battery_text.text))
+        local entry = stub.dirty[#stub.dirty]
+        if check(refreshesSince(before) == 1, "plugging in should refresh once") then
+            check(entry.region == view.status_container.dimen and entry.mode == "ui",
+                "the whole strip should refresh with a greyscale waveform")
+        end
+
+        before = #stub.dirty
+        view:onCharging()
+        check(refreshesSince(before) == 0, "an unchanged reading should not refresh")
+
+        stub.battery.charging = false
+        before = #stub.dirty
+        view:onNotCharging()
+        check(refreshesSince(before) == 1, "unplugging should refresh once")
+
+        stub.battery.capacity = 39
+        before = #stub.dirty
+        view:onResume()
+        check(tostring(view.battery_text.text):find("39%", 1, true) ~= nil,
+            "waking should show the battery as it now is, got "
+            .. tostring(view.battery_text.text))
+        check(refreshesSince(before) == 1, "waking with a new reading should refresh once")
+    end
+end
+
 writeToken(nil)
 print(string.format("\n%d checks, %d failures", checks, failures))
 os.exit(failures == 0 and 0 or 1)
